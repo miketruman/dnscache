@@ -13,7 +13,7 @@ import (
 	"sort"
 )
 
-var addr = ":6380"
+var addr = ":6379"
 
 var config = bigcache.Config{
 	// number of shards (must be a power of 2)
@@ -125,23 +125,10 @@ func headers(w http.ResponseWriter, req *http.Request) {
 	fmt.Fprintln(w, "get:", string(result3), result3b)
 }
 
-
-func main() {
-
-	http.HandleFunc("/", headers)
-
-	http.ListenAndServe(":8090", nil)
-
-	cache.Set("my-unique-key", []byte("value"))
-
-	if entry, err := cache.Get("my-unique-key"); err == nil {
-		fmt.Println(string(entry))
-	}
-
+func redisServer(){
 	var mu sync.RWMutex
-//	var items = make(map[string][]byte)
-	var ps redcon.PubSub
-	go log.Printf("started server at %s", addr)
+	//var ps redcon.PubSub
+	go log.Printf("started DNS-Cache REDIS server at %s", addr)
 	err := redcon.ListenAndServe(addr,
 		func(conn redcon.Conn, cmd redcon.Command) {
 			switch strings.ToLower(string(cmd.Args[0])) {
@@ -152,22 +139,14 @@ func main() {
 			case "quit":
 				conn.WriteString("OK")
 				conn.Close()
-			case "dnsadd":
-				if len(cmd.Args) != 4 {
-					conn.WriteError("ERR wrong number of arguments for '" + string(cmd.Args[0]) + "' command")
-					return
-				}
-				mu.Lock()
-				AddDNS(string(cmd.Args[1]), string(cmd.Args[2]), 3)
-				mu.Unlock()
-				conn.WriteString("OK")
 			case "set":
 				if len(cmd.Args) != 3 {
 					conn.WriteError("ERR wrong number of arguments for '" + string(cmd.Args[0]) + "' command")
 					return
 				}
 				mu.Lock()
-				//items[string(cmd.Args[1])] = cmd.Args[2]
+				s := strings.Split(string(cmd.Args[2]), ";")
+				AddDNS(string(cmd.Args[1]), s[0], 3)
 				mu.Unlock()
 				conn.WriteString("OK")
 			case "get":
@@ -202,13 +181,13 @@ func main() {
 				} else {
 					conn.WriteInt(1)
 				}
-			case "publish":
+/*			case "publish":
 				if len(cmd.Args) != 3 {
 					conn.WriteError("ERR wrong number of arguments for '" + string(cmd.Args[0]) + "' command")
 					return
 				}
-				conn.WriteInt(ps.Publish(string(cmd.Args[1]), string(cmd.Args[2])))
-			case "subscribe", "psubscribe":
+				conn.WriteInt(ps.Publish(string(cmd.Args[1]), string(cmd.Args[2])))*/
+		/*	case "subscribe", "psubscribe":
 				if len(cmd.Args) < 2 {
 					conn.WriteError("ERR wrong number of arguments for '" + string(cmd.Args[0]) + "' command")
 					return
@@ -221,6 +200,7 @@ func main() {
 						ps.Subscribe(conn, string(cmd.Args[i]))
 					}
 				}
+				*/
 			}
 		},
 		func(conn redcon.Conn) bool {
@@ -236,5 +216,20 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+}
+
+func main() {
+
+	go redisServer()
+	http.HandleFunc("/", headers)
+
+	http.ListenAndServe(":8090", nil)
+
+	cache.Set("my-unique-key", []byte("value"))
+
+	if entry, err := cache.Get("my-unique-key"); err == nil {
+		fmt.Println(string(entry))
+	}
+
 
 }
