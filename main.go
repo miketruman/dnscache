@@ -16,10 +16,10 @@ var addr = ":6380"
 
 var config = bigcache.Config{
 	// number of shards (must be a power of 2)
-	Shards: 1024,
+	Shards: 16384,
 
 	// time after which entry can be evicted
-	LifeWindow: 10 * time.Minute,
+	LifeWindow: 48 * time.Hour,
 
 	// Interval between removing expired entries (clean up).
 	// If set to <= 0 then no action is performed.
@@ -30,7 +30,7 @@ var config = bigcache.Config{
 	MaxEntriesInWindow: 1000 * 10 * 60,
 
 	// max entry size in bytes, used only in initial memory allocation
-	MaxEntrySize: 500,
+	MaxEntrySize: 5000,
 
 	// prints information about additional memory allocation
 	Verbose: true,
@@ -38,7 +38,7 @@ var config = bigcache.Config{
 	// cache will not allocate more memory than this limit, value in MB
 	// if value is reached then the oldest entries can be overridden for the new ones
 	// 0 value means no size limit
-	HardMaxCacheSize: 8192,
+	HardMaxCacheSize: 262144,
 
 	// callback fired when the oldest entry is removed because of its expiration time or no space left
 	// for the new entry, or because delete was called. A bitmask representing the reason will be returned.
@@ -89,22 +89,22 @@ func AddDNS(ip string, dns string, ttl uint64) {
 	}
 }
 
-func GetDNS(ip string) (string, bool) {
+func GetDNS(ip string) ([]byte, bool) {
 	result, err := cache.Get(ip)
 	if err != nil {
-		return "", false
+		return []byte{}, false
 	}else{
 		var dnsResolve IP
 		if err := json.Unmarshal(result, &dnsResolve); err != nil {
-			return "", false
+			return []byte{}, false
 		}
 		stringArray := []string{}
 		for k := range dnsResolve.DNS {
 			stringArray = append(stringArray, k)
 		}
-		return strings.Join(stringArray,","), true
+		return []byte(strings.Join(stringArray,",")), true
 	}
-	return "", false
+	return []byte{}, false
 }
 
 func headers(w http.ResponseWriter, req *http.Request) {
@@ -137,7 +137,7 @@ func main() {
 	}
 
 	var mu sync.RWMutex
-	var items = make(map[string][]byte)
+//	var items = make(map[string][]byte)
 	var ps redcon.PubSub
 	go log.Printf("started server at %s", addr)
 	err := redcon.ListenAndServe(addr,
@@ -150,13 +150,22 @@ func main() {
 			case "quit":
 				conn.WriteString("OK")
 				conn.Close()
+			case "dnsadd":
+				if len(cmd.Args) != 4 {
+					conn.WriteError("ERR wrong number of arguments for '" + string(cmd.Args[0]) + "' command")
+					return
+				}
+				mu.Lock()
+				AddDNS(string(cmd.Args[1]), string(cmd.Args[2]), 3)
+				mu.Unlock()
+				conn.WriteString("OK")
 			case "set":
 				if len(cmd.Args) != 3 {
 					conn.WriteError("ERR wrong number of arguments for '" + string(cmd.Args[0]) + "' command")
 					return
 				}
 				mu.Lock()
-				items[string(cmd.Args[1])] = cmd.Args[2]
+				//items[string(cmd.Args[1])] = cmd.Args[2]
 				mu.Unlock()
 				conn.WriteString("OK")
 			case "get":
@@ -165,7 +174,8 @@ func main() {
 					return
 				}
 				mu.RLock()
-				val, ok := items[string(cmd.Args[1])]
+				val, ok := GetDNS(string(cmd.Args[1]))
+				//val, ok := items[string(cmd.Args[1])]
 				mu.RUnlock()
 				if !ok {
 					conn.WriteNull()
@@ -178,8 +188,12 @@ func main() {
 					return
 				}
 				mu.Lock()
-				_, ok := items[string(cmd.Args[1])]
-				delete(items, string(cmd.Args[1]))
+				//_, ok := items[string(cmd.Args[1])]
+				//delete(items, string(cmd.Args[1]))
+				ok := false
+				if cache.Delete(string(cmd.Args[1])) != nil {
+					ok = true
+				}
 				mu.Unlock()
 				if !ok {
 					conn.WriteInt(0)
