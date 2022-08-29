@@ -1,0 +1,5 @@
+version: "3.2"
+services:
+ dnscache:
+    build: .
+    network_mode: host
