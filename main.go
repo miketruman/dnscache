@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"sort"
 )
 
 var addr = ":6380"
@@ -102,6 +103,7 @@ func GetDNS(ip string) ([]byte, bool) {
 		for k := range dnsResolve.DNS {
 			stringArray = append(stringArray, k)
 		}
+		sort.Strings(stringArray)
 		return []byte(strings.Join(stringArray,",")), true
 	}
 	return []byte{}, false
