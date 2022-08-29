@@ -223,7 +223,8 @@ func main() {
 	go redisServer()
 	http.HandleFunc("/", headers)
 
-	http.ListenAndServe(":8090", nil)
+	go log.Printf("started DNS-Cache HTTP server at %s", ":8080")
+	http.ListenAndServe(":8080", nil)
 
 	cache.Set("my-unique-key", []byte("value"))
 
